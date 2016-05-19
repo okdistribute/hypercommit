@@ -8,8 +8,9 @@ test('add files', function (t) {
   var ws = version.createFileWriteStream('hello.txt')
   ws.write('hello world')
   ws.end()
-  version.commit(function (err, data) {
+  version.commit(function (err, node) {
     t.error(err)
+    var data = JSON.parse(node.value.toString())
     t.same(data.link.length, 32)
     t.end()
   })
@@ -24,23 +25,24 @@ test('replication', function (t) {
   ws.write('hello world')
   ws.end()
   var link
-  version.commit(function (err, data) {
+  version.commit(function (err, node) {
     t.error(err)
+    var data = JSON.parse(node.value.toString())
     link = data.link
     t.same(data.link.length, 32)
     sync(commits, clone)
   })
-  clone.log.createReadStream({live: true}).on('data', function (data) {
+  clone.createReadStream({live: true}).on('data', function (data) {
     t.same(data.change, 1)
-    var json = JSON.parse(data.value)
-    t.same(link, new Buffer(json.link))
+    var json = JSON.parse(data.value.toString())
+    t.same(link, json.link)
     t.end()
   })
 })
 
 var sync = function (a, b) {
-  a = a.log.createReplicationStream({mode: 'push'})
-  b = b.log.createReplicationStream({mode: 'pull'})
+  a = a.createReplicationStream({mode: 'push'})
+  b = b.createReplicationStream({mode: 'pull'})
 
   a.on('push', function () {
     console.log('a pushed')

@@ -15,6 +15,18 @@ HyperCommit.prototype.createVersion = function (link, opts) {
   return new CommitDrive(this, link, opts)
 }
 
+HyperCommit.prototype.createReadStream = function () {
+  return this.log.createReadStream.apply(this.log, arguments)
+}
+
+HyperCommit.prototype.createReplicationStream = function () {
+  return this.log.createReplicationStream.apply(this.log, arguments)
+}
+
+HyperCommit.prototype._add = function (node, data, cb) {
+  this.log.add(node, data, cb)
+}
+
 function CommitDrive (commits, link, opts) {
   if (!(this instanceof CommitDrive)) return new CommitDrive(commits, link, opts)
   var self = this
@@ -24,16 +36,20 @@ function CommitDrive (commits, link, opts) {
 
 inherits(CommitDrive, Archive)
 
-CommitDrive.prototype.commit = function (cb) {
+CommitDrive.prototype.commit = function (node, cb) {
   var self = this
+  if (typeof node === 'function') {
+    cb = node
+    node = null
+  }
   self.finalize(function (err) {
     if (err) return cb(err)
     var data = {
-      link: self.key
+      link: self.key.toString()
     }
-    self.commits.log.add(null, JSON.stringify(data), function (err) {
+    self.commits._add(node, JSON.stringify(data), function (err, node) {
       if (err) return cb(err)
-      cb(null, data)
+      cb(null, node)
     })
   })
 }
