@@ -1,67 +1,39 @@
 var hyperlog = require('hyperlog')
+var inherits = require('inherits')
 var hyperdrive = require('hyperdrive')
-var memdb = require('memdb')
+var Archive = require('hyperdrive/archive')
 
-var log = hyperlog(memdb())
-var clone = hyperlog(memdb())
+module.exports = HyperCommit
 
-var sync = function (a, b) {
-  a = a.createReplicationStream({mode: 'push'})
-  b = b.createReplicationStream({mode: 'pull'})
-
-  a.on('push', function () {
-    console.log('a pushed')
-  })
-
-  a.on('pull', function () {
-    console.log('a pulled')
-  })
-
-  a.on('end', function () {
-    console.log('a ended')
-  })
-
-  b.on('push', function () {
-    console.log('b pushed')
-  })
-
-  b.on('pull', function () {
-    console.log('b pulled')
-  })
-
-  b.on('end', function () {
-    console.log('b ended')
-  })
-
-  a.pipe(b).pipe(a)
+function HyperCommit (db) {
+  if (!(this instanceof HyperCommit)) return new HyperCommit(db)
+  this.log = hyperlog(db)
+  this.drive = hyperdrive(db)
 }
 
-clone.createReadStream({live: true}).on('data', function (data) {
-  console.log('change: (%d) %s, %s', data.change, data.key, data.value.toString())
-})
+HyperCommit.prototype.createVersion = function (link, opts) {
+  return new CommitDrive(this, link, opts)
+}
 
-var drive = hyperdrive(memdb())
+function CommitDrive (commits, link, opts) {
+  if (!(this instanceof CommitDrive)) return new CommitDrive(commits, link, opts)
+  var self = this
+  self.commits = commits
+  Archive.call(this, commits.drive, link, opts)
+}
 
-commit('hello world', function (link) {
-  log.add(null, link, function (err, node) {
-    if (err) throw err
-    commit('hello mars', function (link) {
-      log.add(node, link, function (err, node) {
-        if (err) throw err
-        sync(log, clone)
-        log.add(null, 'meh')
-      })
+inherits(CommitDrive, Archive)
+
+CommitDrive.prototype.commit = function (cb) {
+  var self = this
+  self.finalize(function (err) {
+    if (err) return cb(err)
+    var data = {
+      link: self.key
+    }
+    self.commits.log.add(null, JSON.stringify(data), function (err) {
+      if (err) return cb(err)
+      cb(null, data)
     })
-  })
-})
-
-function commit (text, cb) {
-  var archive = drive.createArchive()
-  var ws = archive.createFileWriteStream('hello.txt')
-  ws.write(text)
-  ws.end()
-  archive.finalize(function () {
-    var link = archive.key.toString('hex')
-    cb(link)
   })
 }
